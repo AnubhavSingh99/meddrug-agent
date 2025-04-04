@@ -23,6 +23,12 @@ const Sidebar: React.FC<SidebarProps> = ({ isOpen }) => {
             </NavLink>
           </li>
           <li>
+            <NavLink to="/molecule-analysis" className={({ isActive }) => isActive ? 'active' : ''}>
+              <span className="icon">🔍</span>
+              <span className="label">Molecule Analysis</span>
+            </NavLink>
+          </li>
+          <li>
             <NavLink to="/knowledge-base" className={({ isActive }) => isActive ? 'active' : ''}>
               <span className="icon">📚</span>
               <span className="label">Knowledge Base</span>
@@ -31,12 +37,12 @@ const Sidebar: React.FC<SidebarProps> = ({ isOpen }) => {
           <li>
             <NavLink to="/testing" className={({ isActive }) => isActive ? 'active' : ''}>
               <span className="icon">🧬</span>
-              <span className="label">Testing & Validation</span>
+              <span className="label">Testing</span>
             </NavLink>
           </li>
           <li>
             <NavLink to="/graph-discovery" className={({ isActive }) => isActive ? 'active' : ''}>
-              <span className="icon">🕸️</span>
+              <span className="icon">🔗</span>
               <span className="label">Graph Discovery</span>
             </NavLink>
           </li>

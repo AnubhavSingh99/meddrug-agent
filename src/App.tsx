@@ -12,6 +12,7 @@ import Testing from './pages/Testing'
 import GraphDiscovery from './pages/GraphDiscovery'
 import DrugDesign from './pages/DrugDesign'
 import Settings from './pages/Settings'
+import MoleculeAnalysis from './pages/MoleculeAnalysis'
 
 // Context Providers
 import { ComputationProvider } from './context/ComputationContext'
@@ -26,7 +27,7 @@ function App() {
           <Navbar setSidebarOpen={setSidebarOpen} sidebarOpen={sidebarOpen} />
           <div className="content-container">
             <Sidebar isOpen={sidebarOpen} />
-            <main className="main-content">
+            <main className={`main-content ${sidebarOpen ? 'sidebar-open' : 'sidebar-closed'}`}>
               <Routes>
                 <Route path="/" element={<Dashboard />} />
                 <Route path="/molecular-generation" element={<MolecularGeneration />} />
@@ -34,6 +35,7 @@ function App() {
                 <Route path="/testing" element={<Testing />} />
                 <Route path="/graph-discovery" element={<GraphDiscovery />} />
                 <Route path="/drug-design" element={<DrugDesign />} />
+                <Route path="/molecule-analysis" element={<MoleculeAnalysis />} />
                 <Route path="/settings" element={<Settings />} />
               </Routes>
             </main>
