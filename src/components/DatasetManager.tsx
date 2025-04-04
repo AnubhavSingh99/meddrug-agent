@@ -1,12 +1,13 @@
 import React, { useState, useEffect } from 'react';
-import { datasetApi } from '../services/api';
+import { loadCSVDataset, datasetDescriptions, availableDatasets } from '../utils/datasetLoader';
+import DatasetAnalyzer from './DatasetAnalyzer';
 
 interface Dataset {
   id: string;
   name: string;
   source: string;
   description: string;
-  entryCount: number;
+  data: Record<string, string>[];
   lastUpdated: string;
 }
 
@@ -14,81 +15,61 @@ const DatasetManager: React.FC = () => {
   const [datasets, setDatasets] = useState<Dataset[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [importSource, setImportSource] = useState('');
-  const [isImporting, setIsImporting] = useState(false);
+  const [selectedDataset, setSelectedDataset] = useState<Dataset | null>(null);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [analyzingDataset, setAnalyzingDataset] = useState<string | null>(null);
 
   useEffect(() => {
-    // In a real implementation, this would fetch from the API
-    // For the MVP, we'll use dummy data
-    const dummyDatasets: Dataset[] = [
-      {
-        id: 'pubchem-subset',
-        name: 'PubChem Subset',
-        source: 'PubChem',
-        description: 'A curated subset of drug-like compounds from PubChem',
-        entryCount: 10000,
-        lastUpdated: '2023-09-15',
-      },
-      {
-        id: 'bindingdb-kinases',
-        name: 'BindingDB Kinase Inhibitors',
-        source: 'BindingDB',
-        description: 'Kinase inhibitors with binding data from BindingDB',
-        entryCount: 5432,
-        lastUpdated: '2023-08-22',
-      },
-      {
-        id: 'davis-kinase',
-        name: 'DAVIS Kinase Dataset',
-        source: 'DAVIS',
-        description: 'Comprehensive kinase inhibition dataset',
-        entryCount: 442,
-        lastUpdated: '2023-07-10',
-      },
-      {
-        id: 'kiba-benchmark',
-        name: 'KIBA Benchmark Dataset',
-        source: 'KIBA',
-        description: 'Kinase inhibitor bioactivity dataset',
-        entryCount: 2111,
-        lastUpdated: '2023-06-30',
-      },
-      {
-        id: 'clintox',
-        name: 'ClinTox Dataset',
-        source: 'ClinTox',
-        description: 'Clinical toxicity dataset for drug compounds',
-        entryCount: 1478,
-        lastUpdated: '2023-05-18',
-      },
-    ];
-
-    setTimeout(() => {
-      setDatasets(dummyDatasets);
-      setIsLoading(false);
-    }, 1000);
+    async function loadDatasets() {
+      try {
+        const loadedDatasets = await Promise.all(
+          availableDatasets.map(async (filename) => {
+            const data = await loadCSVDataset(filename);
+            return {
+              id: filename.replace('_mock.csv', ''),
+              name: datasetDescriptions[filename].name,
+              source: datasetDescriptions[filename].source,
+              description: datasetDescriptions[filename].description,
+              data,
+              lastUpdated: new Date().toISOString().split('T')[0],
+            };
+          })
+        );
+        
+        setDatasets(loadedDatasets);
+        setIsLoading(false);
+      } catch (error) {
+        console.error('Error loading datasets:', error);
+        setError('Failed to load datasets. Please try again later.');
+        setIsLoading(false);
+      }
+    }
+    
+    loadDatasets();
   }, []);
 
-  const handleImportDataset = () => {
-    if (!importSource) return;
-    
-    setIsImporting(true);
-    
-    // Simulate API call
-    setTimeout(() => {
-      const newDataset: Dataset = {
-        id: `custom-${Date.now()}`,
-        name: `Custom ${importSource} Dataset`,
-        source: importSource,
-        description: `Imported dataset from ${importSource}`,
-        entryCount: Math.floor(Math.random() * 5000) + 1000,
-        lastUpdated: new Date().toISOString().split('T')[0],
-      };
-      
-      setDatasets(prev => [...prev, newDataset]);
-      setImportSource('');
-      setIsImporting(false);
-    }, 2000);
+  const handleViewDataset = (dataset: Dataset) => {
+    setSelectedDataset(dataset);
+    setAnalyzingDataset(null);
+  };
+
+  const handleCloseDatasetView = () => {
+    setSelectedDataset(null);
+  };
+
+  const handleAnalyzeDataset = (datasetId: string) => {
+    setAnalyzingDataset(datasetId);
+    setSelectedDataset(null);
+  };
+
+  const handleCloseAnalyzer = () => {
+    setAnalyzingDataset(null);
+  };
+
+  const handleSearch = (event: React.FormEvent) => {
+    event.preventDefault();
+    // In a real app, this would filter the data
+    console.log('Searching for:', searchQuery);
   };
 
   if (isLoading) {
@@ -99,59 +80,110 @@ const DatasetManager: React.FC = () => {
     return <div className="error-message">Error: {error}</div>;
   }
 
+  if (analyzingDataset) {
+    return <DatasetAnalyzer datasetId={analyzingDataset} onClose={handleCloseAnalyzer} />;
+  }
+
   return (
     <div className="dataset-manager">
-      <div className="dataset-header">
-        <h2>Available Datasets</h2>
-        <div className="import-controls">
-          <input
-            type="text"
-            placeholder="Dataset source URL or identifier"
-            value={importSource}
-            onChange={(e) => setImportSource(e.target.value)}
-            disabled={isImporting}
-          />
-          <button 
-            onClick={handleImportDataset}
-            disabled={!importSource || isImporting}
-          >
-            {isImporting ? 'Importing...' : 'Import Dataset'}
-          </button>
+      {selectedDataset ? (
+        <div className="dataset-viewer">
+          <div className="dataset-viewer-header">
+            <h2>{selectedDataset.name}</h2>
+            <button className="close-btn" onClick={handleCloseDatasetView}>×</button>
+          </div>
+          
+          <div className="dataset-search">
+            <form onSubmit={handleSearch}>
+              <input
+                type="text"
+                placeholder="Search in dataset..."
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+              />
+              <button type="submit">Search</button>
+            </form>
+          </div>
+          
+          <div className="dataset-table-container">
+            {selectedDataset.data.length > 0 ? (
+              <table className="dataset-table">
+                <thead>
+                  <tr>
+                    {Object.keys(selectedDataset.data[0]).map(header => (
+                      <th key={header}>{header}</th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {selectedDataset.data.slice(0, 100).map((row, index) => (
+                    <tr key={index}>
+                      {Object.values(row).map((value, i) => (
+                        <td key={i}>{value}</td>
+                      ))}
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            ) : (
+              <p className="no-data">No data available in this dataset.</p>
+            )}
+            
+            {selectedDataset.data.length > 100 && (
+              <div className="dataset-pagination">
+                <p>Showing 1-100 of {selectedDataset.data.length} entries</p>
+                <div className="pagination-controls">
+                  <button disabled>Previous</button>
+                  <span className="page-indicator">Page 1</span>
+                  <button>Next</button>
+                </div>
+              </div>
+            )}
+          </div>
         </div>
-      </div>
-      
-      <div className="datasets-table">
-        <table>
-          <thead>
-            <tr>
-              <th>Name</th>
-              <th>Source</th>
-              <th>Entries</th>
-              <th>Last Updated</th>
-              <th>Actions</th>
-            </tr>
-          </thead>
-          <tbody>
+      ) : (
+        <>
+          <div className="dataset-header">
+            <h2>Available Datasets</h2>
+          </div>
+          
+          <div className="datasets-grid">
             {datasets.map(dataset => (
-              <tr key={dataset.id}>
-                <td>
-                  <div className="dataset-name">{dataset.name}</div>
-                  <div className="dataset-description">{dataset.description}</div>
-                </td>
-                <td>{dataset.source}</td>
-                <td>{dataset.entryCount.toLocaleString()}</td>
-                <td>{dataset.lastUpdated}</td>
-                <td>
-                  <div className="dataset-actions">
-                    <button className="action-btn">Browse</button>
-                    <button className="action-btn">Export</button>
+              <div key={dataset.id} className="dataset-card">
+                <div className="dataset-card-header">
+                  <h3>{dataset.name}</h3>
+                  <span className="dataset-source">{dataset.source}</span>
+                </div>
+                <p className="dataset-description">{dataset.description}</p>
+                <div className="dataset-stats">
+                  <div className="stat">
+                    <span className="stat-value">{dataset.data.length}</span>
+                    <span className="stat-label">Entries</span>
                   </div>
-                </td>
-              </tr>
+                  <div className="stat">
+                    <span className="stat-value">{Object.keys(dataset.data[0] || {}).length}</span>
+                    <span className="stat-label">Fields</span>
+                  </div>
+                </div>
+                <div className="dataset-actions">
+                  <button 
+                    className="view-dataset-btn"
+                    onClick={() => handleViewDataset(dataset)}
+                  >
+                    View Dataset
+                  </button>
+                  <button 
+                    className="analyze-btn"
+                    onClick={() => handleAnalyzeDataset(dataset.id)}
+                  >
+                    Analyze
+                  </button>
+                </div>
+              </div>
             ))}
-          </tbody>
-        </table>
-      </div>
+          </div>
+        </>
+      )}
     </div>
   );
 };

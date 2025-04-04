@@ -1,49 +1,37 @@
 import React, { useState } from 'react';
-import { Molecule } from '../data/molecules';
-import DrugExplorer from '../components/DrugExplorer';
-import MoleculeViewer from '../components/MoleculeViewer';
-import AIChatbot from '../components/AIChatbot';
+import DrugDesignWorkbench from '../components/DrugDesignWorkbench';
+import AIAssistant from '../components/AIAssistant';
 
 const DrugDesign: React.FC = () => {
-  const [selectedMolecule, setSelectedMolecule] = useState<Molecule | null>(null);
-  const [showChatbot, setShowChatbot] = useState(false);
+  const [showAssistant, setShowAssistant] = useState(false);
 
   return (
-    <div className="drug-design">
+    <div className="drug-design-page">
       <header className="page-header">
-        <h1>Interactive Drug Design</h1>
-        <p>Design and optimize drug compounds in real-time</p>
+        <h1>Drug Design & Optimization</h1>
+        <p>Design, optimize, and analyze drug candidates</p>
       </header>
       
-      <div className="drug-design-content">
-        <div className="content-header">
-          <h2>Drug Candidate Explorer</h2>
-          <button 
-            className="ai-assistant-btn"
-            onClick={() => setShowChatbot(!showChatbot)}
-          >
-            {showChatbot ? 'Hide AI Assistant' : 'Show AI Assistant'}
-          </button>
+      <div className="content-header">
+        <div className="section-title">
+          <h2>Design Workbench</h2>
+        </div>
+        <button 
+          className="ai-assistant-btn"
+          onClick={() => setShowAssistant(!showAssistant)}
+        >
+          {showAssistant ? 'Hide AI Assistant' : 'Show AI Assistant'}
+        </button>
+      </div>
+      
+      <div className="main-content-area">
+        <div className="explorer-container">
+          <DrugDesignWorkbench />
         </div>
         
-        <div className="main-content-area">
-          <div className="explorer-container">
-            <DrugExplorer onSelectMolecule={setSelectedMolecule} />
-          </div>
-          
-          {showChatbot && (
-            <div className="chatbot-container">
-              <AIChatbot />
-            </div>
-          )}
-        </div>
-        
-        {selectedMolecule && (
-          <div className="molecule-viewer-overlay">
-            <MoleculeViewer 
-              molecule={selectedMolecule} 
-              onClose={() => setSelectedMolecule(null)} 
-            />
+        {showAssistant && (
+          <div className="chatbot-container">
+            <AIAssistant context="drug-design" />
           </div>
         )}
       </div>
