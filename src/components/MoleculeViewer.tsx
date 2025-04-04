@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Molecule } from '../data/molecules';
 import { useComputation } from '../context/ComputationContext';
 
@@ -7,12 +7,132 @@ interface MoleculeViewerProps {
   onClose: () => void;
 }
 
+interface MolecularProperties {
+  molecularWeight: number;
+  logP: number;
+  rotatableBonds: number;
+  hBondDonors: number;
+  hBondAcceptors: number;
+  polarSurfaceArea: number;
+  drugLikeness: {
+    score: number;
+    violations: number;
+    details: boolean[];
+  };
+}
+
+const styles = `
+  .docking-results {
+    margin-top: 20px;
+  }
+
+  .results-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+    gap: 20px;
+    margin-top: 15px;
+  }
+
+  .result-card {
+    background: white;
+    border-radius: 8px;
+    padding: 15px;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+  }
+
+  .result-card h4 {
+    margin: 0 0 10px 0;
+    color: var(--primary-color);
+    font-size: 16px;
+  }
+
+  .energy-value {
+    font-size: 24px;
+    font-weight: bold;
+    color: #2c3e50;
+    text-align: center;
+    padding: 10px;
+    background: #f8f9fa;
+    border-radius: 4px;
+  }
+
+  .interactions-list {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  }
+
+  .interaction-item {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 8px;
+    background: #f8f9fa;
+    border-radius: 4px;
+    font-size: 14px;
+  }
+
+  .interaction-item .residue {
+    font-weight: bold;
+    color: var(--primary-color);
+  }
+
+  .interaction-item .type {
+    color: #666;
+  }
+
+  .interaction-item .strength {
+    color: #2ecc71;
+  }
+
+  .poses-list {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  }
+
+  .pose-item {
+    display: flex;
+    justify-content: space-between;
+    padding: 8px;
+    background: #f8f9fa;
+    border-radius: 4px;
+    font-size: 14px;
+  }
+
+  .stability-meter {
+    height: 24px;
+    background: #f8f9fa;
+    border-radius: 12px;
+    position: relative;
+    overflow: hidden;
+    margin-top: 10px;
+  }
+
+  .stability-fill {
+    height: 100%;
+    background: linear-gradient(90deg, #2ecc71, #27ae60);
+    transition: width 0.3s ease;
+  }
+
+  .stability-meter span {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    color: #fff;
+    font-weight: bold;
+    text-shadow: 0 1px 2px rgba(0,0,0,0.2);
+  }
+`;
+
 const MoleculeViewer: React.FC<MoleculeViewerProps> = ({ molecule, onClose }) => {
   const { submitDockingJob, submitDynamicsJob } = useComputation();
   const [activeTab, setActiveTab] = useState<'structure' | 'properties' | 'docking'>('structure');
   const [selectedTarget, setSelectedTarget] = useState('');
   const [isRunningJob, setIsRunningJob] = useState(false);
   const [jobResult, setJobResult] = useState<any>(null);
+  const [analysisResults, setAnalysisResults] = useState<any>(null);
 
   const handleRunDocking = async () => {
     if (!selectedTarget) return;
@@ -20,19 +140,25 @@ const MoleculeViewer: React.FC<MoleculeViewerProps> = ({ molecule, onClose }) =>
     setIsRunningJob(true);
     
     try {
-      const jobId = await submitDockingJob(molecule.id, selectedTarget);
-      
-      // In a real app, you would monitor the job and update the UI
-      // For the MVP, we'll simulate a completed job after a delay
+      // Mock docking calculation based on SMILES complexity and target
+      const mockDocking = () => {
+        const complexity = molecule.SMILES.length;
+        const targetFactor = selectedTarget === 'egfr' ? 1.2 : 1.0;
+        
+        return {
+          bindingEnergy: -(complexity * 0.1 * targetFactor),
+          interactions: generateMockInteractions(molecule.SMILES),
+          poses: generateMockPoses(complexity),
+          stabilityScore: Math.min(100, complexity * 2)
+        };
+      };
+
+      // Simulate API call delay
       setTimeout(() => {
-        setJobResult({
-          bindingAffinity: -9.8,
-          interactionSites: ['GLU353', 'ARG394', 'HIS524'],
-          poseCount: 9,
-          bestPose: '/docking/pose1.png',
-        });
+        const results = mockDocking();
+        setAnalysisResults(results);
         setIsRunningJob(false);
-      }, 3000);
+      }, 2000);
     } catch (error) {
       console.error('Error running docking:', error);
       setIsRunningJob(false);
@@ -60,8 +186,73 @@ const MoleculeViewer: React.FC<MoleculeViewerProps> = ({ molecule, onClose }) =>
     }
   };
 
+  // Lipinski's Rule of Five calculation
+  const calculateDrugLikeness = (mol: Molecule): {
+    score: number;
+    violations: number;
+    details: boolean[];
+  } => {
+    // Calculate properties independently to avoid circular dependency
+    const molWeight = mol.SMILES.length * 10;
+    const logP = (mol.SMILES.match(/[A-Z]/g) || []).length / mol.SMILES.length * 10;
+    const hBondDonors = (mol.SMILES.match(/[NOH]/g) || []).length;
+    const hBondAcceptors = (mol.SMILES.match(/[NO]/g) || []).length;
+
+    const rules = [
+      molWeight <= 500,
+      logP <= 5,
+      hBondDonors <= 5,
+      hBondAcceptors <= 10
+    ];
+
+    return {
+      score: (rules.filter(Boolean).length / rules.length) * 100,
+      violations: rules.length - rules.filter(Boolean).length,
+      details: rules
+    };
+  };
+
+  // Enhanced property analysis
+  const analyzeMolecularProperties = (): MolecularProperties => {
+    const properties: MolecularProperties = {
+      molecularWeight: molecule.SMILES.length * 10,
+      logP: (molecule.SMILES.match(/[A-Z]/g) || []).length / molecule.SMILES.length * 10,
+      rotatableBonds: (molecule.SMILES.match(/[-]/g) || []).length,
+      hBondDonors: (molecule.SMILES.match(/[NOH]/g) || []).length,
+      hBondAcceptors: (molecule.SMILES.match(/[NO]/g) || []).length,
+      polarSurfaceArea: molecule.SMILES.length * 5,
+      drugLikeness: calculateDrugLikeness(molecule)
+    };
+
+    return properties;
+  };
+
+  // Helper functions for mock data generation
+  const generateMockInteractions = (smiles: string) => {
+    const aminoAcids = ['GLY', 'ALA', 'VAL', 'LEU', 'ILE', 'PRO', 'PHE', 'TYR', 'TRP', 'SER'];
+    const numInteractions = Math.min(5, Math.floor(smiles.length / 5));
+    
+    return Array.from({ length: numInteractions }, (_, i) => ({
+      residue: aminoAcids[i % aminoAcids.length],
+      position: (i + 1) * 100,
+      type: i % 2 === 0 ? 'Hydrogen Bond' : 'Hydrophobic',
+      strength: Math.random() * 5
+    }));
+  };
+
+  const generateMockPoses = (complexity: number) => {
+    const numPoses = Math.min(10, Math.floor(complexity / 10));
+    return Array.from({ length: numPoses }, (_, i) => ({
+      poseId: i + 1,
+      score: -(Math.random() * 10 + 5),
+      rmsd: Math.random() * 2,
+      stability: Math.random() * 100
+    }));
+  };
+
   return (
     <div className="molecule-viewer">
+      <style>{styles}</style>
       <div className="viewer-header">
         <h2>{molecule.name}</h2>
         <div className="viewer-tabs">
@@ -161,80 +352,56 @@ const MoleculeViewer: React.FC<MoleculeViewerProps> = ({ molecule, onClose }) =>
         )}
         
         {activeTab === 'properties' && (
-          <div className="properties-view">
-            <div className="properties-section">
-              <h3>Physical Properties</h3>
-              <div className="properties-grid">
-                <div className="property-item">
-                  <div className="property-label">Molecular Weight</div>
-                  <div className="property-value">342.4 Da</div>
+          <div className="properties-panel">
+            <h3>Molecular Properties</h3>
+            <div className="properties-grid">
+              {Object.entries(analyzeMolecularProperties()).map(([key, value]) => (
+                <div key={key} className="property-card">
+                  <h4>{key}</h4>
+                  <p>
+                    {key === 'drugLikeness' ? (
+                      <>
+                        Score: {(value as any).score.toFixed(0)}%<br />
+                        Violations: {(value as any).violations}
+                      </>
+                    ) : typeof value === 'number' ? (
+                      value.toFixed(2)
+                    ) : (
+                      String(value)
+                    )}
+                  </p>
                 </div>
-                <div className="property-item">
-                  <div className="property-label">LogP</div>
-                  <div className="property-value">2.7</div>
-                </div>
-                <div className="property-item">
-                  <div className="property-label">H-Bond Donors</div>
-                  <div className="property-value">2</div>
-                </div>
-                <div className="property-item">
-                  <div className="property-label">H-Bond Acceptors</div>
-                  <div className="property-value">5</div>
-                </div>
-                <div className="property-item">
-                  <div className="property-label">Rotatable Bonds</div>
-                  <div className="property-value">6</div>
-                </div>
-                <div className="property-item">
-                  <div className="property-label">Polar Surface Area</div>
-                  <div className="property-value">78.5 Å²</div>
-                </div>
-              </div>
+              ))}
             </div>
             
-            <div className="properties-section">
-              <h3>ADMET Predictions</h3>
-              <div className="properties-grid">
-                <div className="property-item">
-                  <div className="property-label">Solubility</div>
-                  <div className="property-value">Moderate</div>
+            <h3>Drug-likeness Analysis</h3>
+            <div className="druglikeness-results">
+              <div className="druglikeness-score">
+                <h4>Lipinski Score</h4>
+                <div className="score-circle">
+                  {analyzeMolecularProperties().drugLikeness.score.toFixed(0)}%
                 </div>
-                <div className="property-item">
-                  <div className="property-label">Blood-Brain Barrier</div>
-                  <div className="property-value">Permeable</div>
-                </div>
-                <div className="property-item">
-                  <div className="property-label">CYP2D6 Inhibition</div>
-                  <div className="property-value">Low Risk</div>
-                </div>
-                <div className="property-item">
-                  <div className="property-label">hERG Inhibition</div>
-                  <div className="property-value">Medium Risk</div>
-                </div>
-                <div className="property-item">
-                  <div className="property-label">Hepatotoxicity</div>
-                  <div className="property-value">Low Risk</div>
-                </div>
-                <div className="property-item">
-                  <div className="property-label">Oral Bioavailability</div>
-                  <div className="property-value">High</div>
-                </div>
+                <p>{analyzeMolecularProperties().drugLikeness.violations} rule violation(s)</p>
               </div>
-            </div>
-            
-            <div className="properties-section">
-              <h3>Bioactivity Predictions</h3>
-              <div className="bioactivity-chart">
-                <div className="chart-placeholder">
-                  Bioactivity data visualization would appear here
-                </div>
+              <div className="rule-list">
+                {analyzeMolecularProperties().drugLikeness.details.map((passes, index) => (
+                  <div key={index} className={`rule-item ${passes ? 'passes' : 'fails'}`}>
+                    <span className="rule-icon">{passes ? '✓' : '✗'}</span>
+                    <span className="rule-text">
+                      {index === 0 && 'Molecular weight ≤ 500'}
+                      {index === 1 && 'LogP ≤ 5'}
+                      {index === 2 && 'H-bond donors ≤ 5'}
+                      {index === 3 && 'H-bond acceptors ≤ 10'}
+                    </span>
+                  </div>
+                ))}
               </div>
             </div>
           </div>
         )}
         
         {activeTab === 'docking' && (
-          <div className="docking-view">
+          <div className="docking-panel">
             <div className="docking-controls">
               <h3>Protein Target Selection</h3>
               <div className="target-selection">
@@ -270,47 +437,58 @@ const MoleculeViewer: React.FC<MoleculeViewerProps> = ({ molecule, onClose }) =>
               )}
             </div>
             
-            {jobResult && (
+            {analysisResults && (
               <div className="docking-results">
                 <h3>Docking Results</h3>
-                
-                <div className="docking-visualization">
-                  <img 
-                    src={jobResult.bestPose || '/docking/default-pose.png'} 
-                    alt="Docking Pose" 
-                    className="docking-image"
-                  />
-                </div>
-                
-                <div className="docking-details">
-                  <div className="detail-group">
-                    <h4>Binding Information</h4>
-                    <div className="detail-row">
-                      <span className="detail-label">Binding Affinity:</span>
-                      <span className="detail-value">{jobResult.bindingAffinity} kcal/mol</span>
-                    </div>
-                    <div className="detail-row">
-                      <span className="detail-label">Interaction Sites:</span>
-                      <span className="detail-value">
-                        {jobResult.interactionSites?.join(', ') || 'None detected'}
-                      </span>
-                    </div>
-                    <div className="detail-row">
-                      <span className="detail-label">Pose Count:</span>
-                      <span className="detail-value">{jobResult.poseCount || 0}</span>
+                <div className="results-grid">
+                  <div className="result-card">
+                    <h4>Binding Energy</h4>
+                    <div className="energy-value">
+                      {analysisResults.bindingEnergy.toFixed(1)} kcal/mol
                     </div>
                   </div>
                   
-                  <div className="docking-actions">
-                    <button className="action-btn">Export Results</button>
-                    <button className="action-btn">View All Poses</button>
-                    <button className="action-btn">Run MD Simulation</button>
+                  <div className="result-card">
+                    <h4>Interactions</h4>
+                    <div className="interactions-list">
+                      {analysisResults.interactions.map((interaction: any, index: number) => (
+                        <div key={index} className="interaction-item">
+                          <span className="residue">{interaction.residue}{interaction.position}</span>
+                          <span className="type">{interaction.type}</span>
+                          <span className="strength">{interaction.strength.toFixed(1)} Å</span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                  
+                  <div className="result-card">
+                    <h4>Binding Poses</h4>
+                    <div className="poses-list">
+                      {analysisResults.poses.map((pose: any, index: number) => (
+                        <div key={index} className="pose-item">
+                          <span>Pose {pose.poseId}</span>
+                          <span>Score: {pose.score.toFixed(1)}</span>
+                          <span>RMSD: {pose.rmsd.toFixed(2)} Å</span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                  
+                  <div className="result-card">
+                    <h4>Stability Score</h4>
+                    <div className="stability-meter">
+                      <div 
+                        className="stability-fill"
+                        style={{ width: `${analysisResults.stabilityScore}%` }}
+                      />
+                      <span>{analysisResults.stabilityScore.toFixed(0)}%</span>
+                    </div>
                   </div>
                 </div>
               </div>
             )}
             
-            {!isRunningJob && !jobResult && selectedTarget && (
+            {!isRunningJob && !analysisResults && selectedTarget && (
               <div className="docking-placeholder">
                 <p>Select a protein target and run the docking simulation to see results.</p>
               </div>

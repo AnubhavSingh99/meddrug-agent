@@ -1,10 +1,23 @@
-import React, { useState } from 'react'
-import { Molecule } from '../data/molecules'
+import React, { useState, useCallback } from 'react'
+import { Molecule, molecules } from '../data/molecules'
 import DrugExplorer from '../components/DrugExplorer'
 import MoleculeViewer from '../components/MoleculeViewer'
 
+interface RangeParam {
+  min: number;
+  max: number;
+}
+
+interface GenerationParams {
+  molecularWeight: RangeParam;
+  logP: RangeParam;
+  numRotatableBonds: RangeParam;
+  targetProtein: string;
+  batchSize: number;
+}
+
 const MolecularGeneration: React.FC = () => {
-  const [generationParams, setGenerationParams] = useState({
+  const [generationParams, setGenerationParams] = useState<GenerationParams>({
     molecularWeight: { min: 200, max: 500 },
     logP: { min: 1, max: 5 },
     numRotatableBonds: { min: 0, max: 10 },
@@ -12,15 +25,16 @@ const MolecularGeneration: React.FC = () => {
     batchSize: 1000
   })
   
+  const [generatedMolecules, setGeneratedMolecules] = useState<Molecule[]>([])
   const [isGenerating, setIsGenerating] = useState(false)
   const [selectedMolecule, setSelectedMolecule] = useState<Molecule | null>(null)
   const [activeTab, setActiveTab] = useState<'parameters' | 'results'>('parameters')
 
-  const handleParamChange = (param: string, subParam: string, value: number) => {
+  const handleParamChange = (param: keyof GenerationParams, subParam: keyof RangeParam, value: number) => {
     setGenerationParams({
       ...generationParams,
       [param]: {
-        ...generationParams[param as keyof typeof generationParams],
+        ...(generationParams[param] as RangeParam),
         [subParam]: value
       }
     })
@@ -33,15 +47,49 @@ const MolecularGeneration: React.FC = () => {
     })
   }
 
-  const handleGenerate = () => {
+  const generateMolecules = useCallback(() => {
     setIsGenerating(true)
     
-    // Simulate generation process
+    // Filter molecules based on generation parameters
+    const filteredMolecules = molecules.filter(mol => {
+      // Extract molecular weight from SMILES (simplified mock calculation)
+      const mockMolWeight = mol.SMILES.length * 10 // Simple mock calculation
+      
+      // Mock LogP calculation based on character distribution
+      const mockLogP = (mol.SMILES.match(/[A-Z]/g) || []).length / mol.SMILES.length * 10
+      
+      // Mock rotatable bonds calculation
+      const mockRotatableBonds = (mol.SMILES.match(/[-]/g) || []).length
+      
+      return (
+        mockMolWeight >= generationParams.molecularWeight.min &&
+        mockMolWeight <= generationParams.molecularWeight.max &&
+        mockLogP >= generationParams.logP.min &&
+        mockLogP <= generationParams.logP.max &&
+        mockRotatableBonds >= generationParams.numRotatableBonds.min &&
+        mockRotatableBonds <= generationParams.numRotatableBonds.max
+      )
+    })
+
+    // Sort by binding affinity and take top N based on batchSize
+    const sortedMolecules = [...filteredMolecules]
+      .sort((a, b) => b.Binding_Affinity - a.Binding_Affinity)
+      .slice(0, generationParams.batchSize)
+
+    // Add generation metadata
+    const generatedResults = sortedMolecules.map(mol => ({
+      ...mol,
+      generationMethod: 'AI-Generated',
+      generationTimestamp: new Date().toISOString(),
+      generationParameters: { ...generationParams }
+    }))
+
     setTimeout(() => {
+      setGeneratedMolecules(generatedResults)
       setIsGenerating(false)
       setActiveTab('results')
-    }, 3000)
-  }
+    }, 2000)
+  }, [generationParams])
 
   return (
     <div className="molecular-generation">
@@ -183,7 +231,7 @@ const MolecularGeneration: React.FC = () => {
             <div className="generation-actions">
               <button 
                 className="generate-btn"
-                onClick={handleGenerate}
+                onClick={generateMolecules}
                 disabled={isGenerating}
               >
                 {isGenerating ? 'Generating...' : 'Generate Molecules'}
@@ -203,7 +251,10 @@ const MolecularGeneration: React.FC = () => {
         
         {activeTab === 'results' && (
           <div className="results-panel">
-            <DrugExplorer onSelectMolecule={setSelectedMolecule} />
+            <DrugExplorer 
+              molecules={generatedMolecules} 
+              onSelectMolecule={setSelectedMolecule}
+            />
           </div>
         )}
       </div>
