@@ -1,51 +1,89 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { Molecule, molecules } from '../data/molecules';
 
 interface DrugExplorerProps {
-  onSelectMolecule?: (molecule: Molecule) => void;
+  molecules: Molecule[];
+  onSelectMolecule: (molecule: Molecule) => void;
 }
 
-const DrugExplorer: React.FC<DrugExplorerProps> = ({ onSelectMolecule }) => {
+const DrugExplorer: React.FC<DrugExplorerProps> = ({ molecules, onSelectMolecule }) => {
   const [filteredMolecules, setFilteredMolecules] = useState<Molecule[]>(molecules);
   const [sortField, setSortField] = useState<keyof Molecule>('Binding_Affinity');
   const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('asc');
-  const [statusFilter, setStatusFilter] = useState<string>('All');
-  const [searchQuery, setSearchQuery] = useState<string>('');
+  const [filters, setFilters] = useState({
+    status: 'All',
+    bindingThreshold: -9.0,
+    admetThreshold: 80,
+    similarityThreshold: 85
+  });
+  const [searchQuery, setSearchQuery] = useState('');
+
+  // Enhanced filtering logic
+  const applyFilters = useMemo(() => {
+    return molecules.filter(mol => {
+      if (filters.status !== 'All' && mol.Status !== filters.status) return false;
+      if (mol.Binding_Affinity > filters.bindingThreshold) return false;
+      if (mol.ADMET_Score < filters.admetThreshold) return false;
+      if (mol.Similarity_Score < filters.similarityThreshold) return false;
+      
+      if (searchQuery) {
+        const query = searchQuery.toLowerCase();
+        return (
+          mol.name.toLowerCase().includes(query) ||
+          mol.SMILES.toLowerCase().includes(query) ||
+          mol.Status.toLowerCase().includes(query)
+        );
+      }
+      
+      return true;
+    });
+  }, [molecules, filters, searchQuery]);
+
+  // Enhanced sorting with multiple criteria
+  const sortMolecules = useMemo(() => {
+    return [...applyFilters].sort((a, b) => {
+      let comparison = 0;
+      
+      // Primary sort by selected field
+      if (typeof a[sortField] === 'number' && typeof b[sortField] === 'number') {
+        comparison = sortField === 'Binding_Affinity' 
+          ? (a[sortField] as number) - (b[sortField] as number)
+          : (b[sortField] as number) - (a[sortField] as number);
+      } else {
+        // Handle non-numeric fields (like Status) using string comparison
+        comparison = String(b[sortField]).localeCompare(String(a[sortField]));
+      }
+      
+      // Secondary sort by ADMET score
+      if (comparison === 0) {
+        comparison = b.ADMET_Score - a.ADMET_Score;
+      }
+      
+      return sortDirection === 'asc' ? comparison : -comparison;
+    });
+  }, [applyFilters, sortField, sortDirection]);
 
   useEffect(() => {
-    let result = [...molecules];
+    setFilteredMolecules(sortMolecules);
+  }, [sortMolecules]);
+
+  // Add statistical analysis
+  const statistics = useMemo(() => {
+    if (filteredMolecules.length === 0) return null;
     
-    // Apply status filter
-    if (statusFilter !== 'All') {
-      result = result.filter(molecule => molecule.Status === statusFilter);
-    }
-    
-    // Apply search query
-    if (searchQuery) {
-      const query = searchQuery.toLowerCase();
-      result = result.filter(molecule => 
-        molecule.name.toLowerCase().includes(query) || 
-        molecule.SMILES.toLowerCase().includes(query)
-      );
-    }
-    
-    // Apply sorting
-    result.sort((a, b) => {
-      if (sortField === 'Binding_Affinity') {
-        // For binding affinity, lower (more negative) is better
-        return sortDirection === 'asc' 
-          ? a[sortField] - b[sortField]
-          : b[sortField] - a[sortField];
-      } else {
-        // For other numeric fields, higher is better
-        return sortDirection === 'asc' 
-          ? b[sortField] - a[sortField]
-          : a[sortField] - b[sortField];
-      }
-    });
-    
-    setFilteredMolecules(result);
-  }, [sortField, sortDirection, statusFilter, searchQuery]);
+    return {
+      count: filteredMolecules.length,
+      averageBinding: filteredMolecules.reduce((sum, mol) => sum + mol.Binding_Affinity, 0) / filteredMolecules.length,
+      averageADMET: filteredMolecules.reduce((sum, mol) => sum + mol.ADMET_Score, 0) / filteredMolecules.length,
+      topCandidate: filteredMolecules.reduce((best, mol) => 
+        mol.Binding_Affinity < best.Binding_Affinity ? mol : best
+      ),
+      statusDistribution: filteredMolecules.reduce((acc, mol) => {
+        acc[mol.Status] = (acc[mol.Status] || 0) + 1;
+        return acc;
+      }, {} as Record<string, number>)
+    };
+  }, [filteredMolecules]);
 
   const handleSort = (field: keyof Molecule) => {
     if (sortField === field) {
@@ -77,8 +115,8 @@ const DrugExplorer: React.FC<DrugExplorerProps> = ({ onSelectMolecule }) => {
         <div className="filter-container">
           <label>Status:</label>
           <select 
-            value={statusFilter} 
-            onChange={(e) => setStatusFilter(e.target.value)}
+            value={filters.status} 
+            onChange={(e) => setFilters({ ...filters, status: e.target.value })}
           >
             <option value="All">All</option>
             <option value="Generated">Generated</option>
@@ -146,6 +184,38 @@ const DrugExplorer: React.FC<DrugExplorerProps> = ({ onSelectMolecule }) => {
           </tbody>
         </table>
       </div>
+      
+      {statistics && (
+        <div className="statistics-panel">
+          <h3>Analysis Summary</h3>
+          <div className="statistics-grid">
+            <div className="stat-card">
+              <h4>Total Molecules</h4>
+              <p>{statistics.count}</p>
+            </div>
+            <div className="stat-card">
+              <h4>Average Binding Affinity</h4>
+              <p>{statistics.averageBinding.toFixed(2)} kcal/mol</p>
+            </div>
+            <div className="stat-card">
+              <h4>Average ADMET Score</h4>
+              <p>{statistics.averageADMET.toFixed(2)}</p>
+            </div>
+          </div>
+          
+          <h4>Status Distribution</h4>
+          <div className="status-distribution">
+            {Object.entries(statistics.statusDistribution).map(([status, count]) => (
+              <div key={status} className="status-bar">
+                <span>{status}</span>
+                <div className="bar" style={{ width: `${(count / statistics.count) * 100}%` }}>
+                  {count}
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
     </div>
   );
 };

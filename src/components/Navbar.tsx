@@ -17,7 +17,7 @@ const Navbar: React.FC<NavbarProps> = ({ setSidebarOpen, sidebarOpen }) => {
           ☰
         </button>
         <Link to="/" className="logo">
-          <h1>MediGraph Agent</h1>
+          <h1>MedGraph Agent</h1>
         </Link>
       </div>
       <div className="navbar-center">
